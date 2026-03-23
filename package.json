@@ -8,12 +8,14 @@
     "start": "node scripts/run.mjs dev",
     "dev": "node scripts/run.mjs dev",
     "build": "node scripts/run.mjs build",
+    "cf:build": "npm run build",
+    "cf:deploy": "npx wrangler pages deploy dist",
     "lint": "node scripts/run.mjs lint",
     "preview": "node scripts/run.mjs preview",
     "clean": "node scripts/clean.mjs"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20 <23"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
