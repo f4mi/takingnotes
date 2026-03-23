@@ -1,0 +1,17 @@
+{
+  "name": "takingnotes.ink",
+  "short_name": "takingnotes.ink",
+  "description": "Browser-based drawing, animation, and tablet capture studio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171717",
+  "theme_color": "#171717",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

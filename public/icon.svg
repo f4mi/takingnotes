@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">takingnotes.ink icon</title>
+  <desc id="desc">A warm paper-toned square with a dark pen stroke.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#f7efe2" />
+      <stop offset="100%" stop-color="#e2c49a" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#1c1917" />
+  <rect x="24" y="24" width="208" height="208" rx="40" fill="url(#bg)" />
+  <path
+    d="M64 170c16-36 33-68 50-96 5-9 19-10 27-2l24 24c8 8 7 22-2 27-28 17-60 34-96 50l-19 5z"
+    fill="#292524"
+  />
+  <path
+    d="M150 68l38 38"
+    fill="none"
+    stroke="#fafaf9"
+    stroke-linecap="round"
+    stroke-width="12"
+  />
+  <circle cx="84" cy="172" r="12" fill="#ea580c" />
+</svg>
