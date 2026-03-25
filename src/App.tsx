@@ -566,6 +566,7 @@ function App() {
   const touchGestureRef = useRef<ViewportTouchGesture | null>(null);
   const viewportScrollAnimationRef = useRef<number | null>(null);
   const zoomAnimationRef = useRef<number | null>(null);
+  const studioViewportScrollRef = useRef<{ left: number; top: number } | null>(null);
   const displayZoomRef = useRef(displayZoom);
   displayZoomRef.current = displayZoom;
   const pendingCenterAfterZoomRef = useRef(false);
@@ -932,6 +933,38 @@ function App() {
     cancelAnimationFrame(viewportScrollAnimationRef.current);
     viewportScrollAnimationRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (activePage === 'studio') {
+      const frame = requestAnimationFrame(() => {
+        const viewport = canvasViewportRef.current;
+        const savedScroll = studioViewportScrollRef.current;
+        if (!viewport || !savedScroll) {
+          return;
+        }
+
+        const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+        const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+        viewport.scrollLeft = Math.max(0, Math.min(savedScroll.left, maxLeft));
+        viewport.scrollTop = Math.max(0, Math.min(savedScroll.top, maxTop));
+      });
+
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    const viewport = canvasViewportRef.current;
+    if (viewport) {
+      studioViewportScrollRef.current = {
+        left: viewport.scrollLeft,
+        top: viewport.scrollTop,
+      };
+    }
+
+    panDragRef.current = null;
+    touchGestureRef.current = null;
+    cancelViewportScrollAnimation();
+    cancelZoomAnimation();
+  }, [activePage, cancelViewportScrollAnimation, cancelZoomAnimation]);
 
   const scrollViewportTo = useCallback((
     left: number,
@@ -1587,7 +1620,7 @@ function App() {
       viewport.removeEventListener('wheel', handleCanvasViewportWheel);
       viewport.removeEventListener('mousedown', preventMiddleScroll);
     };
-  }, [handleCanvasViewportWheel]);
+  }, [activePage, handleCanvasViewportWheel]);
 
   useLayoutEffect(() => {
     const viewport = canvasViewportRef.current;
