@@ -12,7 +12,7 @@ const WACOM_OFFLINE_SERVICE_UUID = 'ffee0001-bbaa-9988-7766-554433221100';
 const WACOM_OFFLINE_CHRC_PEN_DATA_UUID = 'ffee0003-bbaa-9988-7766-554433221100';
 const WACOM_SYSEVENT_SERVICE_UUID = '3a340720-c572-11e5-86c5-0002a5d5c51b';
 
-const DEFAULT_POINT_SIZE = 10;
+const DEFAULT_POINT_SIZE = 1;
 const DEFAULT_SLATE_PRESSURE_MAX = 2047;
 const DEFAULT_SPARK_PRESSURE_MAX = 1023;
 const DEFAULT_SLATE_WIDTH = 21600;
@@ -463,7 +463,7 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
   private currentUuid = '';
   private batteryLevel = 0;
   private isCharging = false;
-  private firmwareVersion = false;
+  private firmwareVersion = "";
   private liveBounds = {
     width: 21600,
     height: 14800,
