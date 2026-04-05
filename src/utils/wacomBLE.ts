@@ -12,7 +12,7 @@ const WACOM_OFFLINE_SERVICE_UUID = 'ffee0001-bbaa-9988-7766-554433221100';
 const WACOM_OFFLINE_CHRC_PEN_DATA_UUID = 'ffee0003-bbaa-9988-7766-554433221100';
 const WACOM_SYSEVENT_SERVICE_UUID = '3a340720-c572-11e5-86c5-0002a5d5c51b';
 
-const DEFAULT_POINT_SIZE = 10;
+const DEFAULT_POINT_SIZE = 1;
 const DEFAULT_SLATE_PRESSURE_MAX = 2047;
 const DEFAULT_SPARK_PRESSURE_MAX = 1023;
 const DEFAULT_SLATE_WIDTH = 21600;
@@ -461,6 +461,9 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
   private liveOrientation: WacomLiveOrientation = 'landscape';
   private liveTimeline = 0;
   private currentUuid = '';
+  private batteryLevel = 0;
+  private isCharging = false;
+  private firmwareVersion = "";
   private liveBounds = {
     width: 21600,
     height: 14800,
@@ -840,9 +843,10 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
       }
       const payload = this.rxBuffer.slice(2, needed);
       this.rxBuffer = this.rxBuffer.slice(needed);
-      this.log(`NUS RX: op=0x${opcode.toString(16)} len=${length}`);
+//      this.log(`NUS RX: op=0x${opcode.toString(16)} len=${length}`);
+      this.log(`NUS RX: op=0x${opcode.toString(16)} len=${length} payload=[${bytesToHex(Array.from(payload))}]`);
       this.enqueueNordicMessage({ opcode, payload });
-    }
+  }
   };
 
   private onLivePenValueChanged = (event: Event) => {
@@ -958,6 +962,79 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
     throw new Error(`Unable to connect to ${this.deviceName} after retries.`);
   }
 
+  private async queryBatteryStatus() {
+    // 1. Send the GET_BATTERY command (0xb9)
+    // The log shows payload [0x00], and we expect a reply opcode of 0xba or 0xb3
+    const reply = await this.sendNordicCommand(
+      0xb9,
+      [0x00],
+      (message) => message.opcode === 0xba || message.opcode === 0xb3,
+    );
+
+    // 2. Handle Error Ack (0xb3)
+    if (reply.opcode === 0xb3 && reply.payload[0] !== 0x00) {
+      throw this.parseAckError(reply.payload);
+    }
+
+    // 3. Parse Success (0xba)
+    // Payload structure: [level, status] 
+    // Based on log: 36 (hex) = 54 (dec)
+    if (reply.opcode === 0xba && reply.payload.length >= 1) {
+      const batteryLevel = reply.payload[0];
+      const isCharging = reply.payload.length > 1 ? reply.payload[1] !== 0x00 : false;
+
+      // Update internal state (assuming these properties exist in your class)
+      this.batteryLevel = batteryLevel;
+      this.isCharging = isCharging;
+
+      this.log(`Device battery: ${batteryLevel}% (${isCharging ? 'charging' : 'discharging'})`);
+      
+      return {
+        level: batteryLevel,
+        charging: isCharging
+      };
+    }
+  }
+
+  private async queryFirmware() {
+    // Function to fetch a specific firmware segment
+    const getSegment = async (index: number) => {
+      const reply = await this.sendNordicCommand(
+        0xb7,
+        [index],
+        (message) => message.opcode === 0xb8 || message.opcode === 0xb3,
+      );
+
+      if (reply.opcode === 0xb3) {
+        throw this.parseAckError(reply.payload);
+      }
+
+      // Expected format: [index, prefix, year, month, day, ?, ?, suffix]
+      // Example: 00 0b 01 06 00 09 02 09 0a -> b 1 6 0 9 2 9 a
+      const p = reply.payload;
+      if (p.length < 9) return "";
+
+      const charPrefix = String.fromCharCode(p[1] + 87); // 0x0b + 87 = 98 ('b')
+      const year = `${p[2]}${p[3]}`;
+      const month = `${p[4]}${p[5]}`;
+      const day = `${p[6]}${p[7]}`;
+      const charSuffix = String.fromCharCode(p[10] + 87); // 0x0a + 87 = 97 ('a')
+
+      return `${charPrefix}${year}${month}${day}${charSuffix}`;
+    };
+
+    const part1 = await getSegment(0x00);
+    const part2 = await getSegment(0x01);
+
+    const firmwareVersion = `${part1}-${part2}`;
+    this.log(`Firmware is ${firmwareVersion}`);
+    
+    // Store it in your config or state
+    this.firmwareVersion = firmwareVersion;
+    
+    return firmwareVersion;
+  }
+
   private async queryDimensions() {
     if (this.isSparkModel()) {
       this.liveBounds.width = DEFAULT_SPARK_WIDTH;
@@ -1003,10 +1080,18 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
   }
 
   private async primeOfflineTransfer() {
-    const reply = await this.sendNordicCommand(0xe3, [], (message) => message.opcode === 0xb3);
-    if (reply.payload[0] !== 0x00) {
-      throw this.parseAckError(reply.payload);
-    }
+    //tuhi doesn't seem to send 0xE3, I don't know why it's here
+    //const reply = await this.sendNordicCommand(0xe3, [], (message) => message.opcode === 0xb3);
+    //if (reply.payload[0] !== 0x00) {
+    //  throw this.parseAckError(reply.payload);
+    //}
+    //tuhi does this:
+    //SET_FILE_TRANSFER_REPORTING_TYPE
+    const transferReply = await this.sendNordicCommand(
+      0xec,
+      [0x06, 0x00, 0x00, 0x00, 0x00, 0x00],
+      (message) => message.opcode === 0xb3,
+    );
   }
 
   private async setTabletTime() {
@@ -1018,6 +1103,7 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
     if (reply.payload[0] !== 0x00) {
       throw this.parseAckError(reply.payload);
     }
+    this.log(`Set tablet time OK`);
   }
 
   private async queryAvailableFileCount() {
@@ -1129,6 +1215,7 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
     if (deleteReply.payload[0] !== 0x00) {
       throw this.parseAckError(deleteReply.payload);
     }
+    this.log(`Deleted oldest file`);
   }
 
   async connect(uuid: string) {
@@ -1143,7 +1230,10 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
 
     await this.setupTransport(false);
     await this.connectWithUuid(hexUuidToBytes(this.currentUuid));
+    await this.queryFirmware();
+    await this.queryBatteryStatus();
     await this.queryDimensions();
+    await this.setTabletTime();
 
     this.authenticated = true;
     this.setStatus('Connected');
@@ -1247,19 +1337,27 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
 
     await this.primeOfflineTransfer();
 
-    const paperModeReply = await this.sendNordicCommand(0xb1, [0x01], (message) => message.opcode === 0xb3);
+    var paperModeReply = await this.sendNordicCommand(0xb1, [0x01], (message) => message.opcode === 0xb3);
     if (paperModeReply.payload[0] !== 0x00) {
       throw this.parseAckError(paperModeReply.payload);
     }
 
-    const transferReply = await this.sendNordicCommand(
-      0xec,
-      [0x06, 0x00, 0x00, 0x00, 0x00, 0x00],
-      (message) => message.opcode === 0xb3,
-    );
-    if (transferReply.payload[0] !== 0x00) {
-      throw this.parseAckError(transferReply.payload);
+    //tuhi does this twice
+    paperModeReply = await this.sendNordicCommand(0xb1, [0x01], (message) => message.opcode === 0xb3);
+    if (paperModeReply.payload[0] !== 0x00) {
+      throw this.parseAckError(paperModeReply.payload);
     }
+
+    //this should be SET_FILE_TRANSFER_REPORTING_TYPE
+    //tuhi doesn't do it on my slate, it returns 2
+    //const transferReply = await this.sendNordicCommand(
+    //  0xec,
+    //  [0x06, 0x00, 0x00, 0x00, 0x00, 0x00],
+    //  (message) => message.opcode === 0xb3,
+    //);
+    //if (transferReply.payload[0] !== 0x00) {
+    //  throw this.parseAckError(transferReply.payload);
+    //}
 
     const fileCount = await this.queryAvailableFileCount();
     const pages: WacomPage[] = [];
@@ -1269,8 +1367,22 @@ export class WacomSmartPadBLE implements TabletBackendCapabilities {
       this.setStatus(`Downloading page ${index + 1}/${fileCount}`);
 
       const { byteCount, timestamp } = await this.queryOfflineStrokeMetadata();
+
       if (byteCount > 0) {
-        this.log(`Page ${index + 1}: expecting ${byteCount} bytes of offline pen data`);
+        // 1. Create a Date object. 
+        // We multiply by 1000 because JS Dates use milliseconds, but your function returns seconds.
+        const date = new Date(timestamp * 1000);
+
+        // 2. Extract components for your specific format
+        const year = date.getUTCFullYear();
+        const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+        const day = date.getUTCDate().toString().padStart(2, '0');
+        const hour = date.getUTCHours().toString().padStart(2, '0');
+        const minute = date.getUTCMinutes().toString().padStart(2, '0');
+
+        const timeStr = `${year}-${month}-${day} at ${hour}:${minute}`;
+
+        this.log(`Page ${index + 1}: expecting ${byteCount} bytes of offline pen data (Timestamp: ${timeStr})`);
       }
 
       this.offlinePenDataBuffer = [];
